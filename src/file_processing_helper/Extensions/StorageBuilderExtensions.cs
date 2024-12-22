@@ -12,7 +12,7 @@ public static class StorageBuilderExtensions
 {
     public static IHostApplicationBuilder AddStorage(this IHostApplicationBuilder builder)
     {
-        var minioSection = builder.Configuration.GetSection("Minio");
+        var minioSection = builder.Configuration.GetSection("Storage:Minio");
 
         builder.Services.AddMinio(configureClient => configureClient
             .WithEndpoint(minioSection["Endpoint"])
@@ -24,9 +24,9 @@ public static class StorageBuilderExtensions
 
         builder.Services.AddSingleton<IFileProcessorContext, FileProcessorContext>();
 
-        builder.Services.AddKeyedSingleton<IFileProcessor, ImageProcessor>("image/png");
+        builder.Services.AddKeyedSingleton<IFileProcessor, ImageProcessor>(FileTypes.Image);
 
-        builder.Services.AddKeyedSingleton<IFileProcessor, VideoProcessor>("video");
+        builder.Services.AddKeyedSingleton<IFileProcessor, VideoProcessor>(FileTypes.Video);
 
         return builder;
     }
