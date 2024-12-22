@@ -1,4 +1,4 @@
-﻿namespace file_processing.worker.Storages.Abstractions;
+﻿namespace file_processing_helper.Storages.Abstractions;
 
 public interface IStorage
 {

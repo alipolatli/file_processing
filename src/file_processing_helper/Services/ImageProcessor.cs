@@ -1,8 +1,8 @@
-﻿using file_processing.worker.Services.Abstractions;
+﻿using file_processing_helper.Services.Abstractions;
 
-namespace file_processing.worker.Services;
+namespace file_processing_helper.Services;
 
-public sealed class VideoProcessor : IFileProcessor
+public sealed class ImageProcessor : IFileProcessor
 {
     public async Task<Stream> ProcessAsync(Stream stream, CancellationToken cancellationToken = default)
     {

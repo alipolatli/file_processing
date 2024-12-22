@@ -1,4 +1,4 @@
-﻿namespace file_processing.worker.Services.Abstractions;
+﻿namespace file_processing_helper.Services.Abstractions;
 
 public interface IFileProcessorContext
 {

@@ -1,6 +1,6 @@
-﻿using file_processing.worker.Services.Abstractions;
+﻿using file_processing_helper.Services.Abstractions;
 
-namespace file_processing.worker.Services;
+namespace file_processing_helper.Services;
 
 public sealed class FileProcessorContext(IServiceProvider serviceProvider) : IFileProcessorContext
 {

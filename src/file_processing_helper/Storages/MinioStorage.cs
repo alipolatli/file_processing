@@ -1,10 +1,10 @@
-﻿using file_processing.worker.Storages.Abstractions;
+﻿using file_processing_helper.Storages.Abstractions;
 using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
 
-namespace file_processing.worker.Storages;
+namespace file_processing_helper.Storages;
 
 public class MinioStorage(IMinioClient minioClient) : IStorage
 {
