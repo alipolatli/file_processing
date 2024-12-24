@@ -38,11 +38,6 @@ app.MapPost("upload", async (
     [FromServices] IStorage storage,
     CancellationToken cancellationToken) =>
 {
-    if (formFile is null || formFile.Length == 0)
-    {
-        return Results.BadRequest("The uploaded file is invalid or empty.");
-    }
-
     var bucketName = "temp-bucket";
     var objectName = DateTime.Now.ToString("yyyyMMddHHmmss");
 
@@ -58,7 +53,8 @@ app.MapPost("upload", async (
 }).DisableAntiforgery();
 
 
-app.MapGet("upload-requests/{id}", ([FromRoute] string id, CancellationToken cancellationToken) =>
+app.MapGet("upload-requests/{id}", (
+    [FromRoute] string id) =>
 {
     if (UploadStatusStore.UploadStatuses.TryGetValue($"{id}_{UploadStatusStore.PROCESSED}", out var _))
     {
@@ -68,7 +64,10 @@ app.MapGet("upload-requests/{id}", ([FromRoute] string id, CancellationToken can
     return Results.Ok("The upload request is still in the temporary state. Not yet processed.");
 });
 
-app.MapGet("download/{id}", async ([FromRoute] string id, [FromServices] IStorage storage, CancellationToken cancellationToken) =>
+app.MapGet("download/{id}", async (
+    [FromRoute] string id,
+    [FromServices] IStorage storage,
+    CancellationToken cancellationToken) =>
 {
     if (UploadStatusStore.UploadStatuses.TryGetValue($"{id}_{UploadStatusStore.PROCESSED}", out var data))
     {
