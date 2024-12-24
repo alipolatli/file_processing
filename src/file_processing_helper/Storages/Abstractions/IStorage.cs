@@ -2,6 +2,7 @@
 
 public interface IStorage
 {
-    Task<Stream> GetObjectAsync(string bucketName, string objectName, CancellationToken cancellationToken = default);
-    Task<(string Bucket, string Object)> PutObjectAsync(Stream stream, string bucketName, string objectName, CancellationToken cancellationToken = default);
+    Task<MemoryStream> GetObjectAsync(string bucketName, string objectName, CancellationToken cancellationToken = default);
+    Task PutObjectAsync(Stream stream, string bucketName, string objectName, CancellationToken cancellationToken = default);
+    Task<string> GetFileLinkAsync(string bucketName, string fileName, CancellationToken cancellationToken = default);
 }

@@ -1,17 +1,20 @@
 using file_processing.api.IntegrationEvents.EventHandling;
 using file_processing.api.IntegrationEvents.Events;
 using file_processing_helper.Extensions;
+using file_processing_helper.Storages.Abstractions;
 using Microsoft.AspNetCore.Mvc;
-using Minio;
-using Minio.DataModel.Args;
 using Minio.Exceptions;
 using rabbitmq_bus.Abstracts;
 using rabbitmq_bus.Extensions;
+using System.ComponentModel.DataAnnotations;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 builder.AddStorage();
 
@@ -27,59 +30,37 @@ eventBus.Subscribe<ProcessedFileUploadedIntegrationEvent, IIntegrationEventHandl
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseExceptionHandler();
+
 app.MapPost("upload", async (
-     IFormFile formFile,
+    [Required] IFormFile formFile,
     [FromServices] IEventBus eventBus,
-    [FromServices] IMinioClient minioClient) =>
+    [FromServices] IStorage storage,
+    CancellationToken cancellationToken) =>
 {
     if (formFile is null || formFile.Length == 0)
     {
         return Results.BadRequest("The uploaded file is invalid or empty.");
     }
 
-    try
-    {
-        var bucketName = "temp-bucket";
-        var objectName = DateTime.Now.ToString("yyyyMMddHHmmss");
+    var bucketName = "temp-bucket";
+    var objectName = DateTime.Now.ToString("yyyyMMddHHmmss");
 
-        var bucketExistsArgs = new BucketExistsArgs().WithBucket(bucketName);
-        var bucketExists = await minioClient.BucketExistsAsync(bucketExistsArgs);
+    using var stream = formFile.OpenReadStream();
+    await storage.PutObjectAsync(stream, bucketName, objectName, cancellationToken);
 
-        if (!bucketExists)
-        {
-            var makeBucketArgs = new MakeBucketArgs().WithBucket(bucketName);
-            await minioClient.MakeBucketAsync(makeBucketArgs);
-        }
+    eventBus.Publish(new TemporaryFileUploadedIntegrationEvent(bucketName, objectName, formFile.GetFileType()));
 
-        using var stream = formFile.OpenReadStream();
-        var putObjectArgs = new PutObjectArgs()
-            .WithBucket(bucketName)
-            .WithObject(objectName)
-            .WithStreamData(stream)
-            .WithObjectSize(stream.Length)
-            .WithContentType(formFile.ContentType);
+    UploadStatusStore.UploadStatuses.Add($"{objectName}_{UploadStatusStore.TEMP}", (bucketName, objectName));
 
-        await minioClient.PutObjectAsync(putObjectArgs);
+    return Results.Accepted($"/upload-requests/{objectName}", new { Id = objectName });
 
-        eventBus.Publish(new TemporaryFileUploadedIntegrationEvent(bucketName, objectName, formFile.ContentType));
-
-        UploadStatusStore.UploadStatuses.Add($"{objectName}_{UploadStatusStore.TEMP}", (bucketName, objectName));
-
-        return Results.Accepted($"/upload-requests/{objectName}", new { Id = objectName });
-    }
-    catch (MinioException)
-    {
-        return Results.Problem("An error occurred while uploading the file to the object storage.", statusCode: 500);
-    }
-    catch (Exception)
-    {
-        return Results.Problem("An unexpected error occurred. Please try again later.", statusCode: 500);
-    }
 }).DisableAntiforgery();
 
-app.MapGet("upload-requests/{id}", ([FromRoute] string id) =>
+
+app.MapGet("upload-requests/{id}", ([FromRoute] string id, CancellationToken cancellationToken) =>
 {
-    if (UploadStatusStore.UploadStatuses.TryGetValue($"{id}_{UploadStatusStore.PROCESSED}", out var status))
+    if (UploadStatusStore.UploadStatuses.TryGetValue($"{id}_{UploadStatusStore.PROCESSED}", out var _))
     {
         return Results.Ok("The upload request has been processed successfully.");
     }
@@ -87,9 +68,14 @@ app.MapGet("upload-requests/{id}", ([FromRoute] string id) =>
     return Results.Ok("The upload request is still in the temporary state. Not yet processed.");
 });
 
-app.MapGet("download/{id}", ([FromRoute] Guid id, [FromServices] IMinioClient minioClient) =>
+app.MapGet("download/{id}", async ([FromRoute] string id, [FromServices] IStorage storage, CancellationToken cancellationToken) =>
 {
-
+    if (UploadStatusStore.UploadStatuses.TryGetValue($"{id}_{UploadStatusStore.PROCESSED}", out var data))
+    {
+        var link = await storage.GetFileLinkAsync(data.Bucket, data.Object, cancellationToken);
+        return Results.Ok(link);
+    }
+    return Results.NotFound();
 });
 
 app.Run();

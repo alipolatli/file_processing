@@ -1,6 +1,5 @@
 ﻿using file_processing_helper.Storages.Abstractions;
 using Minio;
-using Minio.DataModel;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
 
@@ -8,18 +7,8 @@ namespace file_processing_helper.Storages;
 
 public class MinioStorage(IMinioClient minioClient) : IStorage
 {
-    public async Task<Stream> GetObjectAsync(string bucketName, string objectName, CancellationToken cancellationToken = default)
+    public async Task<MemoryStream> GetObjectAsync(string bucketName, string objectName, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(bucketName))
-        {
-            throw new ArgumentException("Bucket name cannot be null or empty.", nameof(bucketName));
-        }
-
-        if (string.IsNullOrWhiteSpace(objectName))
-        {
-            throw new ArgumentException("Object name cannot be null or empty.", nameof(objectName));
-        }
-
         try
         {
             var memoryStream = new MemoryStream();
@@ -39,19 +28,11 @@ public class MinioStorage(IMinioClient minioClient) : IStorage
         }
         catch (MinioException ex)
         {
-            throw new InvalidOperationException("An error occurred while retrieving the object from Minio.", ex);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("An unexpected error occurred while retrieving the object.", ex);
+            throw new InvalidOperationException("An error occurred while interacting with the Minio service.", ex);
         }
     }
 
-    public async Task<(string Bucket, string Object)> PutObjectAsync(
-        Stream stream,
-        string bucketName,
-        string objectName,
-        CancellationToken cancellationToken = default)
+    public async Task PutObjectAsync(Stream stream, string bucketName, string objectName, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -66,17 +47,27 @@ public class MinioStorage(IMinioClient minioClient) : IStorage
                 .WithObjectSize(stream.Length)
                 .WithStreamData(stream);
 
-            var putObjectResponse = await minioClient.PutObjectAsync(putObjectArgs, cancellationToken);
-
-            return (bucketName, objectName);
+            _ = await minioClient.PutObjectAsync(putObjectArgs, cancellationToken);
         }
         catch (MinioException ex)
         {
             throw new InvalidOperationException("An error occurred while interacting with the Minio service.", ex);
         }
-        catch (Exception ex)
+    }
+
+    public async Task<string> GetFileLinkAsync(string bucketName, string fileName, CancellationToken cancellationToken = default)
+    {
+        try
         {
-            throw new InvalidOperationException("An unexpected error occurred during the object upload process.", ex);
+            return await minioClient.PresignedGetObjectAsync(
+                    new PresignedGetObjectArgs()
+                    .WithBucket(bucketName)
+                    .WithObject(fileName)
+                    .WithExpiry(3600));
+        }
+        catch (MinioException ex)
+        {
+            throw new InvalidOperationException("An error occurred while interacting with the Minio service.", ex);
         }
     }
 

@@ -15,7 +15,7 @@ namespace rabbitmq_bus;
 
 public class EventBusRabbitMQ : IEventBus, IDisposable
 {
-    private const string EXCHANGE_NAME = "atlastek_event_bus";
+    private const string EXCHANGE_NAME = "fileprocessing_event_bus";
 
     private readonly IRabbitMQPersistentConnection _persistentConnection;
     private readonly ILogger<EventBusRabbitMQ> _logger;
@@ -89,16 +89,16 @@ public class EventBusRabbitMQ : IEventBus, IDisposable
         policy.Execute(() =>
         {
             var properties = channel.CreateBasicProperties();
-            properties.DeliveryMode = 2; // persistent
+            properties.DeliveryMode = 2; // Marks the message as persistent, meaning it will be stored on disk to survive broker restarts.
 
             _logger.LogTrace("Publishing event to RabbitMQ: {EventId}", @event.Id);
 
             channel.BasicPublish(
-                exchange: EXCHANGE_NAME,
-                routingKey: eventName,
-                mandatory: true,
-                basicProperties: properties,
-                body: body);
+                exchange: EXCHANGE_NAME, // The name of the exchange to publish the message to. Defines the routing rules. 
+                routingKey: eventName,  // The routing key used to determine how the message will be routed by the exchange.
+                mandatory: true,        // If true, ensures the message is returned to the sender if no queue is bound to the routing key.
+                basicProperties: properties, // The properties of the message, such as headers, delivery mode, or expiration.
+                body: body);            // The actual content of the message to be sent.
         });
     }
     public void Subscribe<T, TH>()
@@ -191,6 +191,7 @@ public class EventBusRabbitMQ : IEventBus, IDisposable
             _logger.LogWarning(ex, "Error Processing message \"{Message}\"", message);
         }
 
+        //can be use DLX (Dead Letter Exchange)
         _consumerChannel.BasicAck(eventArgs.DeliveryTag, multiple: false);
     }
 
@@ -208,11 +209,11 @@ public class EventBusRabbitMQ : IEventBus, IDisposable
         channel.ExchangeDeclare(exchange: EXCHANGE_NAME,
                                 type: "direct");
 
-        channel.QueueDeclare(queue: _queueName,
-                                durable: true,
-                                exclusive: false,
-                                autoDelete: false,
-                                arguments: null);
+        channel.QueueDeclare(queue: _queueName,    // The name of the queue to declare.
+                       durable: true,       // If true, the queue will survive a broker restart.
+                       exclusive: false,    // If true, the queue is used only by this connection and will be deleted when the connection closes.
+                       autoDelete: false,   // If true, the queue will be deleted automatically when no consumers are attached.
+                       arguments: null);    // Additional settings for the queue, such as message TTL or dead-letter exchange. null means no extra arguments.
 
         channel.CallbackException += (sender, ea) =>
         {
@@ -228,27 +229,28 @@ public class EventBusRabbitMQ : IEventBus, IDisposable
 
     private async Task ProcessEvent(string eventName, string message)
     {
-        _logger.LogTrace("Processing RabbitMQ event: {EventName}", eventName);
+        _logger.LogTrace("Processing RabbitMQ event: {EventName}", eventName); // Logs the event being processed.
 
-        if (_subsManager.HasSubscriptionsForEvent(eventName))
+        if (_subsManager.HasSubscriptionsForEvent(eventName)) // Checks if there are any subscriptions for the given event.
         {
-            await using var scope = _serviceProvider.CreateAsyncScope();
-            var subscriptions = _subsManager.GetHandlersForEvent(eventName);
+            await using var scope = _serviceProvider.CreateAsyncScope(); // Creates a scoped service provider for dependency injection.
+            var subscriptions = _subsManager.GetHandlersForEvent(eventName); // Retrieves all handlers for the given event.
             foreach (var subscription in subscriptions)
             {
-                var handler = scope.ServiceProvider.GetService(subscription.HandlerType);
-                if (handler == null) continue;
-                var eventType = _subsManager.GetEventTypeByName(eventName);
-                var integrationEvent = JsonSerializer.Deserialize(message, eventType, new JsonSerializerOptions() { PropertyNameCaseInsensitive = true });
-                var concreteType = typeof(IIntegrationEventHandler<>).MakeGenericType(eventType);
+                var handler = scope.ServiceProvider.GetService(subscription.HandlerType); // Resolves the handler from the service provider.
+                if (handler == null) continue; // Skips if no handler is found.
+                var eventType = _subsManager.GetEventTypeByName(eventName); // Retrieves the event type by its name.
+                var integrationEvent = JsonSerializer.Deserialize(message, eventType, new JsonSerializerOptions() { PropertyNameCaseInsensitive = true }); // Deserializes the message into the specific event type.
+                var concreteType = typeof(IIntegrationEventHandler<>).MakeGenericType(eventType); // Creates the concrete type for the event handler.
 
-                await Task.Yield();
-                await (Task)concreteType.GetMethod("Handle").Invoke(handler, new object[] { integrationEvent });
+                await Task.Yield(); // Ensures asynchronous flow.
+                await (Task)concreteType.GetMethod("Handle").Invoke(handler, new object[] { integrationEvent }); // Dynamically invokes the handler's Handle method with the deserialized event.
             }
         }
         else
         {
-            _logger.LogWarning("No subscription for RabbitMQ event: {EventName}", eventName);
+            _logger.LogWarning("No subscription for RabbitMQ event: {EventName}", eventName); // Logs a warning if no subscription is found for the event.
         }
     }
+
 }
